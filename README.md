@@ -120,7 +120,42 @@ Predictions are saved in the `./prediction/{cuda|cpu|mix}/cmb_predictions` folde
 Logs for predictions are saved in `./log/predict_cuda`, `./log/predict_cpu`, or `./log/predict_mix`. For each CNF file in the test dataset, a log file in csv format is generated, which records the CNF file name, the hardware used (i.e., cuda or cpu), and the time cost (in seconds) of model inference.
 
 ### Solver Module
-(To be updated)
+
+The Solver Module is built on top of [Kissat](https://github.com/arminbiere/kissat). Below are the steps to compile the solver, and apply predicted backbone to the solver.
+
+#### Compile Solver Module
+The source code for the solver module is located in the `solver` folder. Please compile the solver using the following commands:
+```bash
+cd solver
+./configure && make
+cd ..
+```
+After successful compilation, the solver binary will be available at `solver/build/kissat`.
+
+#### Uncompress Predicted Backbone
+To minimize disk storage usage, the GNN module automatically compresses predicted backbone information. Therefore, before solving CNF formulas using our solver module, their corresponding backbone files must be uncompressed. In particular, for each CNF formula located at `./data/cnf/test/[CNF_FILE_NAME]`, its corresponding backbone file predicted by the GNN module is located at `./prediction/{cuda|cpu|mix}/cmb_predictions/[CNF_FILE_NAME].res.tar.gz`, which can be uncompressed via `tar`.
+
+The example below demonstrates how to uncompress a backbone file predicted using CUDA for the CNF file `fee70cede2b5b55bfbdb6e48fbe7ce4f-DLTM_twitter690_74_16.cnf.xz.res.tar.gz` in `./data/cnf/test/` folder:
+```bash
+CNF_FILE_NAME=fee70cede2b5b55bfbdb6e48fbe7ce4f-DLTM_twitter690_74_16.cnf.xz.res.tar.gz
+BACKBONE_FILE_NAME=$CNF_FILE_NAME.res.tar.gz
+tar -xzvf ./prediction/cuda/cmb_predictions/$BACKBONE_FILE_NAME
+UNCOMPRESSED_BACKBONE_FILE_PATH=./$CNF_FILE_NAME.res
+cat $UNCOMPRESSED_BACKBONE_FILE_PATH # Optional: view the uncompressed backbone
+```
+After running these commands, the uncompressed backbone file for the above mentioned CNF file will be available for use in the solver.
+
+#### Run the Solver with Predicted Backbone
+To solve a CNF formula using the uncompressed backbone, execute the following command:
+```bash
+./solver/build/kissat ./data/cnf/test/$CNF_FILE_NAME -q -n --stable=2 --neural_backbone_initial --neuroback_cfd=0.9 $UNCOMPRESSED_BACKBONE_FILE_PATH
+```
+
+The above command uses two neuroback-specific flags:
+- `--neural_backbone_initial`: activate the use of the GNN's predicted backbone for initialization.
+- `--neuroback_cfd`: specify a confidence threshold score ranging from 0 to 1, to determine whether the predicted phases should be treated as backbone phases. Variables with predicted phase confidence scores exceeding the threshold are considered backbone variables, while those with scores below the threshold are classified as non-backbone variables and initialized with the default phase. We usually use a threshold of 0.9, but you can adjust this value to optimize solving performance for specific SAT problems.
+
+In addition, `--random_phase_initial` means that to randomly initialize the phases of the variables.
 
 ### Contact
 For questions, please reach out to Wenxi Wang at [wenxiw@virginia.edu](mailto:wenxiw@virginia.edu) or Yang Hu at [huyang@utexas.edu](mailto:huyang@utexas.edu).
